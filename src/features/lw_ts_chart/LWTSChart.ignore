@@ -1,0 +1,47 @@
+import { createChart, ColorType } from 'lightweight-charts';
+import {useRef, useEffect} from 'react';
+import { useColorScheme } from '@mui/joy/styles';
+
+import { SingleTimeseries } from '../../types/timeseries';
+import { LWChartData } from '../../types/ui';
+
+
+function getChartDataFromServerData(serverData: SingleTimeseries) {
+	const chartData: LWChartData = [];
+	for (let i = 0; i < serverData.timestamps.length; ++i) {
+		const date = new Date(serverData.timestamps[i]);
+		chartData.push({time: date.toISOString().split('T')[0], value: serverData.values[i]});
+	}
+	return chartData;
+}
+
+
+function LWTSChart({ts, onChartReady}: {ts: SingleTimeseries; onChartReady: Function}) {
+	// @ts-ignore
+	const { mode }: {mode: string} = useColorScheme();
+
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(
+  	() => {
+  		if (!chartContainerRef.current) {
+  			return;
+  		}
+  		const chart = createChart(chartContainerRef.current, {
+		      width: Math.floor(chartContainerRef.current.clientWidth),
+		      height: 300,
+		      layout: {
+		          background: { type: ColorType.Solid, color: "#FFFFFF" },
+		          textColor: "black",
+		      },
+		  });
+		  chart.timeScale().fitContent();
+		  const newSeries = chart.addLineSeries();
+		  newSeries.setData(getChartDataFromServerData(ts));
+		  onChartReady();
+  	}, []
+  );
+
+	return (<div ref={chartContainerRef}/>);
+}
+
+export default LWTSChart;
