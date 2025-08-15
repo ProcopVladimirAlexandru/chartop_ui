@@ -28,3 +28,10 @@ export interface SingleTimeseries {
   values: Array<number>;
   metadata: SingleTimeseriesMetadata;
 }
+
+export interface ChartopEntry {
+	operands: Array<SingleTimeseries>
+	order_by_metric_value: number
+	color?: string;
+	formattedValue?: string | number;
+}
