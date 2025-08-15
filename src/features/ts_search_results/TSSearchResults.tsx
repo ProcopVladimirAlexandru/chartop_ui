@@ -9,12 +9,12 @@ import OneTimeseries from '../one_timeseries/OneTimeseries';
 import TSPagination from '../ts_pagination/TSPagination';
 import Loading from '../loading/Loading';
 import AppError from '../errors/AppError';
-import { selectFilteredTSCache, selectTSStatus, selectTSResult } from '../../redux/tsSlice';
+import { selectFilteredChartopEntriesCache, selectTSStatus, selectTSResult } from '../../redux/tsSlice';
 import { selectPage, selectPerPageCount } from '../../redux/tsFiltersSlice';
 
 
 function TSSearchResults() {
-  const fetchTSResult = useSelector(selectFilteredTSCache);
+  const fetchChartopResult = useSelector(selectFilteredChartopEntriesCache);
   const page = useSelector(selectPage);
   const perPageCount = useSelector(selectPerPageCount);
   const tsStatus = useSelector(selectTSStatus);
@@ -26,7 +26,7 @@ function TSSearchResults() {
       // @ts-ignore
       paginationRef.current.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
     }
-  }, [fetchTSResult, page, perPageCount]);
+  }, [fetchChartopResult, page, perPageCount]);
 
   if ((!page && page != 0) || !perPageCount) {
     return <></>;
@@ -56,11 +56,11 @@ function TSSearchResults() {
   }
 
   const tsElementsJSX = [];
-  const data = fetchTSResult;
-  if (!data || !Array.isArray(data.single_timeseries)) {
+  const data = fetchChartopResult;
+  if (!data || !Array.isArray(data.chartop_entries)) {
     return (<AppError message="Encountered unexpected data format. Something is wrong ..."></AppError>);
   }
-  if (data.single_timeseries.length === 0 && page === 0) {
+  if (data.chartop_entries.length === 0 && page === 0) {
     return (
       <BorderedSheet>
         <Typography level="h4" p={2}>
@@ -69,13 +69,14 @@ function TSSearchResults() {
       </BorderedSheet>);
   }
 
-  for (let i = 0; i < data.single_timeseries.length; ++i) {
-    const singleTS = data.single_timeseries[i];
+  // TODO integrate binary starting here at least
+  // actually should be in the API call and resulting types BUT this is a good starting place to look
+  for (let i = 0; i < data.chartop_entries.length; ++i) {
     tsElementsJSX.push((
       <Grid key={i}>
       <OneTimeseries
         index={page*perPageCount + i}
-        ts={singleTS}
+        entry={data.chartop_entries[i]}
       >
       </OneTimeseries>
       </Grid>

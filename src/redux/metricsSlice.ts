@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit';
 import { RootState } from './store';
 
 interface MetricsState {
@@ -63,6 +63,13 @@ export const metricsSlice = createSlice({
 
 export default metricsSlice.reducer
 
+
 export const selectAllMetrics = (state: RootState) => state.metrics.result?.data;
+
+export const selectUnaryMetrics = createSelector(
+  [selectAllMetrics], (allMetrics) => {
+    return allMetrics.filter((m) => m.uid < 16);
+  }
+);
 
 export const selectMetricsStatus = (state: RootState) => state.metrics.status;

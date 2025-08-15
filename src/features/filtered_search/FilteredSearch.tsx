@@ -8,7 +8,7 @@ import Tags from '../tags/Tags';
 import Sorting from '../sorting/Sorting';
 
 import { set as setTSFilters, selectFilters } from '../../redux/tsFiltersSlice';
-import { fetchTS, selectTSStatus, clearSingleTSCache } from '../../redux/tsSlice';
+import { fetchTS, selectTSStatus, clearChartopEntriesCache } from '../../redux/tsSlice';
 import { AppDispatch } from '../../redux/store';
 
 import { Tag } from '../../types/tags';
@@ -110,9 +110,9 @@ function FilteredSearch() {
           		metric: selectedMetric,
           		ascOrDesc: ascOrDesc,
           		page: 0,
-          		perPageCount: stateFilters.perPageCount || (((width < 640) || (height < 640))?3:5)
+          		perPageCount: stateFilters.perPageCount || (((width < 640) || (height < 640))?3:3)
           	}));
-          	dispatch(clearSingleTSCache({}));
+          	dispatch(clearChartopEntriesCache({}));
           	dispatch(fetchTS());
           }}
         >Search</Button>

@@ -26,34 +26,133 @@ ChartJS.register(
   TimeScale,
   zoomPlugin.default
 );
+import { max as _max } from 'lodash';
 
 import Loading from '../loading/Loading';
-import { SingleTimeseries } from '../../types/timeseries';
+import { ChartopEntry, SingleTimeseries } from '../../types/timeseries';
 import { ChartJSData } from '../../types/ui';
 
 const POINT_INTERVAL = 150;
 
-function getChartDataFromServerData(serverData: SingleTimeseries): ChartJSData {
-	const chartData: ChartJSData = [];
-	for (let i = 0; i < serverData.timestamps.length; ++i) {
-		chartData.push({x: new Date(serverData.timestamps[i]), y: serverData.values[i]});
+function getChartDataFromServerData(entry: ChartopEntry): ChartJSData {
+	const chartData: Array<ChartJSData> = [Array()];
+	if (entry.operands.length < 2) {
+		for (let i = 0; i < entry.operands[0].timestamps.length; ++i) {
+			chartData[0].push({
+				x: new Date(entry.operands[0].timestamps[i]),
+				y: entry.operands[0].values[i]
+			});
+		}
+		return chartData;
+	}
+
+	chartData.push(Array());
+	let i: number = 0;
+	let j: number = 0;
+	while (true) {
+		let iTs: number | null = null;
+		if (i < entry.operands[0].timestamps.length) {
+			iTs = entry.operands[0].timestamps[i];
+		}
+
+		let jTs: number | null = null;
+		if (j < entry.operands[1].timestamps.length) {
+			jTs = entry.operands[1].timestamps[j];
+		}
+
+		if (iTs === null && jTs === null) {
+		  break;
+		}
+
+		if (iTs !== null) {
+			if (jTs === null) {
+				chartData[0].push(
+				{
+					x: new Date(entry.operands[0].timestamps[i]),
+					y: entry.operands[0].values[i]
+				});
+				++i;
+				continue;
+			}
+			else {
+				if (iTs === jTs) {
+					chartData[0].push(
+					{
+						x: new Date(entry.operands[0].timestamps[i]),
+						y: entry.operands[0].values[i]
+					});
+					chartData[1].push(
+					{
+						x: new Date(entry.operands[1].timestamps[j]),
+						y: entry.operands[1].values[j]
+					});
+					++i;
+					++j;
+					continue;
+				}
+				else if (iTs < jTs) {
+					chartData[0].push(
+					{
+						x: new Date(entry.operands[0].timestamps[i]),
+						y: entry.operands[0].values[i]
+					});
+					++i;
+					continue;
+				}
+				else {
+					chartData[1].push(
+						{
+							x: new Date(entry.operands[1].timestamps[j]),
+							y: entry.operands[1].values[j]
+						}
+					);
+					++j;
+					continue;
+				}
+			}
+		}
+		else {
+			chartData[1].push(
+				{
+					x: new Date(entry.operands[1].timestamps[j]),
+					y: entry.operands[1].values[j]
+				}
+			);
+			++j;
+			continue;
+		}
 	}
 	return chartData;
 }
 
 
-function ChartJSChart({ts, width, height, onChartReady}: {ts: SingleTimeseries; width: string | number; height: string | number; onChartReady?: Function}) {
+function ChartJSChart({entry, width, height, onChartReady}: {entry: ChartopEntry; width: string | number; height: string | number; onChartReady?: Function}) {
 	useEffect(() => {
-		if (((ts.timestamps.length || 0) <= 1) && onChartReady) {onChartReady()}
-	}, [ts]);
+		if (!onChartReady) {
+			return;
+		}
+		for (let operand of entry.operands) {
+			if (operand.timestamps.length > 1) {
+				return;
+			}
+		}
+		onChartReady();
+	}, [entry]);
 	const theme: { colorSchemes: Record<string, any> } = useTheme();
 	// @ts-ignore
 	const { mode }: {mode: string} = useColorScheme();
 
-	const chartData: ChartJSData = getChartDataFromServerData(ts);
-	if ((chartData.length || 0) <= 1) {
+	const chartData: Array<ChartJSData> = getChartDataFromServerData(entry);
+	if ((chartData.length || 0) == 0) {
 		return (<Loading message="Sorry, data is missing." circularProgress={false} border={0}/>);
 	}
+	for (const points of chartData) {
+		if ((points.length || 0) <= 1) {
+			return (<Loading message="Sorry, data is missing." circularProgress={false} border={0}/>);
+		}
+	}
+	const maxDate: Date = _max( chartData.map( data => data.at(-1).x ) );
+	const initialMinDate: Date = _max(chartData.map( data => data[ Math.max(0, data.length - POINT_INTERVAL) ].x));
 
 	const options = {
 		aspectRatio: 0.2,
@@ -65,14 +164,15 @@ function ChartJSChart({ts, width, height, onChartReady}: {ts: SingleTimeseries; 
 	      position: 'top' as const,
 	    },
 	    title: {
-	      display: false,
-	      text: ts.metadata.name,
+	      display: true,
+	      text: "Units: " + entry.operands.map(op => op.metadata.unit).join(" and ")
+	      // text: entry.operands.map(op => op.metadata.name.toString()).join(","),
 	    },
 	    zoom: {
 			  limits: {
 			    x: {
 			    	// min: new Date( chartData[0].x.getTime() - 30 * 24 * 60 * 60 * 1000 ),  // nu asta cauzeaza socul cand atingi
-			    	max: chartData[chartData.length - 1].x,  // nu asta cauzeaza socul cand atingi
+			    	max: maxDate,  // nu asta cauzeaza socul cand atingi
 			    	minRange: POINT_INTERVAL
 			    },
 			  },
@@ -100,7 +200,7 @@ function ChartJSChart({ts, width, height, onChartReady}: {ts: SingleTimeseries; 
 	  		type: "time" as const,
 	  		display: true,
 	  		stacked: false,
-	  		min: chartData[ Math.max(0, chartData.length - POINT_INTERVAL) ].x,
+	  		min: initialMinDate,
 	  		grid: {
 	  			display: false,
 	  		},
@@ -134,8 +234,8 @@ function ChartJSChart({ts, width, height, onChartReady}: {ts: SingleTimeseries; 
 	  	},
 	  	y: {
 	  		title: {
-	  			display: true,
-	  			text: ts.metadata.unit,
+	  			display: false,
+	  			text: entry.operands.map(op => op.metadata.unit).join(" and "),
 	  			font: {
 	  				size: 12,
 	  				weight: "bolder"
@@ -156,14 +256,18 @@ function ChartJSChart({ts, width, height, onChartReady}: {ts: SingleTimeseries; 
 	  	}
 	  }
 	};
+	const colors: Array<string> = ["#0866be"];
+	if (entry.operands.length > 1) {
+		colors.push("#ff3333");
+	}
 
 	const data = {
 	  // labels: [chartData.labels[0], chartData.labels[chartData.labels.length - 1]],
-	  datasets: [
-	    {
+	  datasets: chartData.map((data, i) => 
+	  	{return {
 	    	// clip: {left: -20, top: false, right: -20, bottom: 0},
-	      data: chartData,
-	      borderColor: theme.colorSchemes[mode].chart.line.color,
+	      data: data,
+	      borderColor: colors[i],
 	      backgroundColor: 'rgba(0, 0, 255, 0.3)',
 	      fill: true,
 	      pointBorderWidth: 0,
@@ -177,8 +281,8 @@ function ChartJSChart({ts, width, height, onChartReady}: {ts: SingleTimeseries; 
 	      stack: 'line',
 	      stepped: false,
 	      tension: 0
-	    }
-	  ],
+	    }}
+	   )
 	};
 	// @ts-ignore
   return (<Line width={width} height={height} options={options} data={data} />);

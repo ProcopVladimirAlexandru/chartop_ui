@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useState, FC} from 'react';
 import Sheet from '@mui/joy/Sheet';
 import Grid from '@mui/joy/Grid';
 import Typography from '@mui/joy/Typography';
@@ -22,21 +22,28 @@ import Loading from '../loading/Loading';
 import { useWindowDimensions } from '../../utils/utils'
 
 import { selectAllTags } from '../../redux/tagsSlice';
-import { selectAllMetrics } from '../../redux/metricsSlice';
+import { selectAllMetrics, selectUnaryMetrics } from '../../redux/metricsSlice';
 import { selectMetric } from '../../redux/tsFiltersSlice';
 
-import { SingleTimeseries, SingleTimeseriesMetadataMetric } from '../../types/timeseries';
+import { ChartopEntry, SingleTimeseries, SingleTimeseriesMetadataMetric } from '../../types/timeseries';
 import { Tag } from '../../types/tags';
 import { Metric } from '../../types/metrics';
 import { FRED_DATA_SOURCE_UID, BASE_FRED_LINK } from '../../utils/utils';
 
 
-function getCitationJSX(ts: SingleTimeseries) {
-	const source: string = ts.metadata.source_uid;
-	const uidFromSource: string = ts.metadata.uid_from_source;
-	if (source === FRED_DATA_SOURCE_UID) {
-		const fredHref = `${BASE_FRED_LINK}/${uidFromSource}`;
-		const linkJSX = <Link href={fredHref}>{fredHref}</Link>;
+function getCitationJSX(entry: ChartopEntry) {
+	const linksJSX = [];
+	for (let i = 0; i < entry.operands.length; ++i) {
+		const operand = entry.operands[i];
+		const source: string = operand.metadata.source_uid;
+		if (source === FRED_DATA_SOURCE_UID) {
+			const uidFromSource: string = operand.metadata.uid_from_source;
+			const fredHref = `${BASE_FRED_LINK}/${uidFromSource}`;
+			linksJSX.push(<Typography key={i}><Link href={fredHref}>{fredHref}</Link>{(i < entry.operands.length - 1 )?" and ":""}</Typography>);
+		}
+	}
+
+	if (linksJSX.length > 0) {
 		return (
 		<Grid padding={0.5} margin={0.5} sx={(theme) => {return {
 		  		// @ts-ignore
@@ -46,16 +53,14 @@ function getCitationJSX(ts: SingleTimeseries) {
 				}}}>
 			<Typography sx={{color: "black", wordBreak: "break-word"}} noWrap={false}>
 				<Typography noWrap={false} fontWeight="xl" sx={{wordBreak: "break-word"}}>Citation: </Typography>
-				This data was obtained from the Federal Reserve FRED database. Visit {linkJSX} for the original source.
+				This data was obtained from the Federal Reserve FRED database. Visit {linksJSX} for the original source.
 			</Typography>
 		</Grid>);
 	}
 }
 
-function getAllMetricsJSX(ts: SingleTimeseries, metrics: Array<Metric>, accordion=false, mode="light") {
-	if (!ts.metadata.metrics) {
-		return <></>;
-	}
+function getAllMetricsJSX(entry: ChartopEntry, metrics: Array<Metric>, accordion=false, mode="light") {
+	const ts = entry.operands[0];
 	const titleJSX = (
 		<Grid key="title" sx={{borderBottom: accordion?0:1, borderColor: "#ff9d25"}}>
 			<Typography sx={{wordBreak: "break-word"}} noWrap={false} startDecorator={<AssessmentIcon sx={{color:"#ff9d25"}}/>} component="span" level="h2">Metrics</Typography>
@@ -94,20 +99,67 @@ function getAllMetricsJSX(ts: SingleTimeseries, metrics: Array<Metric>, accordio
 	// 		</Grid>);
 	// }
 
+	const tsUidToMetrics: {[key: number]: {[key: number]: SingleTimeseriesMetadataMetric}} = {};
+	for (const operand of entry.operands) {
+		tsUidToMetrics[operand.metadata.uid] = Object.fromEntries(
+			operand.metadata.metrics.map(metric => [metric.uid, metric] )
+		);
+	}
+
+	const tableHeadJSX = (entry.operands.length <= 1)?(<thead></thead>):(
+		<thead>
+			<tr>
+			<th style={{ width: '60%'}}></th>
+			{entry.operands.map((operand) => (
+				<th key={operand.metadata.uid} style={{ whiteSpace: "pre-wrap" }}><Typography>{operand.metadata.name}</Typography>
+				</th>))}
+			</tr>
+		</thead>
+	);
+
+
+
 	// TABLE
 	const tableJSX = (
 	<Table hoverRow key="table" sx={{ '& tr > *:not(:first-child)': { textAlign: 'right' } }}>
-		<thead></thead>
+	{tableHeadJSX}
 		<tbody>
 		{
-			ts.metadata.metrics.map( (tsMetric) => {
-				return <tr key={tsMetric.uid}>
-				<td style={{ width: '75%' }}>{uidToMetric[tsMetric.uid].name}</td>
-				
-				<td><Typography sx={(theme)=> {
-					// @ts-ignore
-					return {color: theme.colorSchemes[mode].metricValue[tsMetric.color]}}}>{tsMetric.formattedValue}</Typography></td>
+			metrics.map( (metric) => {
+				const values: Array<string | null> = Array();
+				for (const operand of entry.operands) {
+					if (tsUidToMetrics[operand.metadata.uid][metric.uid]) {
+						values.push(tsUidToMetrics[operand.metadata.uid][metric.uid]);
+					}
+				}
+				if (!values.length) {
+					return;
+				}
+				return (
+				<tr key={metric.uid}>
+					<th style={{ whiteSpace: "pre-wrap" }}>{metric.name}</th>
+					{
+						values.map((value, i) => {
+							if (!value) {
+								return;
+							}
+							return (
+								<td key={metric.uid + entry.operands[i].metadata.uid} style={{ whiteSpace: "pre-wrap" }}>
+								<Typography sx={(theme)=> {
+										// @ts-ignore
+										return {
+											color: theme.colorSchemes[mode].metricValue[value.color]
+										}
+									}
+								}>
+								{value.formattedValue}
+									</Typography>
+								</td>
+							);
+						})
+					}
 				</tr>
+				);
 			}
 			)
 		}
@@ -129,10 +181,11 @@ function getAllMetricsJSX(ts: SingleTimeseries, metrics: Array<Metric>, accordio
 	return [titleJSX, tableJSX];
 }
 
-function OneTimeseries({ts, index}: {ts: SingleTimeseries; index: number}) {
+function OneTimeseries({entry, index}: {entry: ChartopEntry; index: number}) {
 	const { height, width } = useWindowDimensions();
 	const tags = useSelector(selectAllTags);
 	const metrics = useSelector(selectAllMetrics);
+	const unaryMetrics = useSelector(selectUnaryMetrics);
 	const selectedMetric = useSelector(selectMetric);
 	if (!selectedMetric) {
 		return <></>;
@@ -147,28 +200,98 @@ function OneTimeseries({ts, index}: {ts: SingleTimeseries; index: number}) {
 
 	const accordionMetrics = width < 1024;
 
-	const tsTagUIDs = (ts.metadata.tags || []).map(tag => tag.uid);
-	const tsTags = tags.filter( (tag: Tag) => tsTagUIDs.includes(tag.uid) );
-	const tsTagsJSX = tsTags.map( (tag: Tag) => { return ( <Grid key={tag.uid}>
-			<Chip
-				size="lg"
-        variant="solid"
-				sx={(theme) => {return {
-					// @ts-ignore
-					bgcolor: theme.colorSchemes[mode].tagColor,
-					borderRadius: 7,
-					color: "#000000",
-					wordBreak: "break-word"
-				}}}
-        > {tag.name} </Chip> </Grid> );} );
+	const beforeChartJSX: Array<FC> = Array();
+	for (let ts of entry.operands) {
+		const tsTagUIDs = (ts.metadata.tags || []).map(tag => tag.uid);
+		const tsTags = tags.filter( (tag: Tag) => tsTagUIDs.includes(tag.uid) );
+		const tsTagsJSX = tsTags.map( (tag: Tag) => { return ( <Grid key={tag.uid}>
+				<Chip
+					size="lg"
+	        variant="solid"
+					sx={(theme) => {return {
+						// @ts-ignore
+						bgcolor: theme.colorSchemes[mode].tagColor,
+						borderRadius: 7,
+						color: "#000000",
+						wordBreak: "break-word"
+					}}}
+	        > {tag.name} </Chip> </Grid> );} );
+		beforeChartJSX.push(
+			<Grid key={ts.metadata.uid} sx={{borderTop: 1, borderColor: "#ff9d25"}}>
+				<Grid container={true} direction="column">
+					{/*Title*/}
+					<Grid padding={0.5} margin={0.5}>
+						<Typography level={h1Title?"h1":"h2"} sx={{wordBreak: "break-word"}} noWrap={false}>
+							{ts.metadata.name}
+						</Typography>
+					</Grid>
 
-	const allMetricsJSX = getAllMetricsJSX(ts, metrics, accordionMetrics, mode);
-	const selectedTSToMetric = (ts.metadata.metrics || []).find( (metric: SingleTimeseriesMetadataMetric) => metric.uid  === selectedMetric.uid );
-	if (!selectedTSToMetric) {
-		// TODO better handle these weird cases
-		return <></>;
-	};
+					<Grid padding={0.5} margin={0.5} sx={(theme) => {return {
+					  		border: 1, borderColor: "#ff9d25",
+					  		// @ts-ignore
+								bgcolor: theme.colorSchemes[mode].tagBackgroundColor,
+							}}}
+					  	borderRadius={7}>
+					{(ts.timestamps.length > 0 && ts.values.length > 0) &&
+					<Typography sx={{wordBreak: "break-word"}} noWrap={false}>
+					<Typography level="h3" component="span" sx={{wordBreak: "break-word"}} noWrap={false}>
+							Last recorded value was {Intl.NumberFormat('en-US', {
+							notation: "compact",
+							maximumFractionDigits: 2
+						}).format(ts.values.at(-1) || 0.0)} {ts.metadata.unit} on 
+						</Typography>
+					<Typography level="h3" component="span" sx={{wordBreak: "break-word"}} noWrap={false}>
+						{" "} {(new Date(ts.timestamps.at(-1) || new Date().getTime())).toLocaleString()}
+					</Typography>
+					</Typography>}
+					</Grid>
 
+					{/*Tags*/}
+					{ (!!tsTagsJSX.length) && <Grid padding={0.5} margin={0.5}>
+						<Grid
+					  	container={true}
+					  	direction="row"
+					  	spacing={1}
+					  	sx={(theme) => {return {
+					  		border: 1, borderColor: "#ff9d25",
+					  		// @ts-ignore
+								bgcolor: theme.colorSchemes[mode].tagBackgroundColor,
+							}}}
+					  	borderRadius={7}
+					  >
+							{tsTagsJSX}
+						</Grid>
+					</Grid>}
+
+					{/*Description*/}
+					{(ts.metadata.description && (ts.metadata.description.length > 0)) &&
+					<Grid padding={0.5} margin={0.5} sx={(_theme) => {return {
+					  		border: 1, borderColor: "#ff9d25",
+					  		maxHeight: '7em', overflowY: 'scroll'
+							}}}
+					  	borderRadius={7}>
+							<Typography level="h4" noWrap={false} component="span" sx={{wordBreak: "break-word"}}>
+							Description:
+							</Typography>
+							<Typography level="body-md" noWrap={false} component="span" sx={{wordBreak: "break-word"}}>
+							{ts.metadata.description}
+							</Typography>
+					</Grid>}
+				</Grid>
+			</Grid>
+		);
+	}
+	const ts = entry.operands[0];
+	const allMetricsJSX = getAllMetricsJSX(entry, unaryMetrics, accordionMetrics, mode);
+		let selectedTSToMetric = (ts.metadata.metrics || []).find( (metric: SingleTimeseriesMetadataMetric) => metric.uid  === selectedMetric.uid );
+		if (!selectedTSToMetric) {
+			selectedTSToMetric = {
+				uid: selectedMetric.uid,
+				value: entry.order_by_metric_value,
+				formattedValue: entry.formattedValue,
+				color: entry.color,
+			}
+		};
 	return (
 		<Grid container={true} direction="row" spacing={2} columns={12} justifyContent="space-between">
 		{/*Info and chart to the left*/}
@@ -197,86 +320,25 @@ function OneTimeseries({ts, index}: {ts: SingleTimeseries; index: number}) {
 						</Grid>
 					</Grid>
 
-					<Grid sx={{borderTop: 1, borderColor: "#ff9d25"}}>
-						<Grid container={true} direction="column">
-							{/*Title*/}
-							<Grid padding={0.5} margin={0.5}>
-								<Typography level={h1Title?"h1":"h2"} sx={{wordBreak: "break-word"}} noWrap={false}>
-									{ts.metadata.name}
-								</Typography>
-							</Grid>
-
-							<Grid padding={0.5} margin={0.5} sx={(theme) => {return {
-							  		border: 1, borderColor: "#ff9d25",
-							  		// @ts-ignore
-										bgcolor: theme.colorSchemes[mode].tagBackgroundColor,
-									}}}
-							  	borderRadius={7}>
-							{(ts.timestamps.length > 0 && ts.values.length > 0) &&
-							<Typography sx={{wordBreak: "break-word"}} noWrap={false}>
-							<Typography level="h3" component="span" sx={{wordBreak: "break-word"}} noWrap={false}>
-									Last recorded value was {Intl.NumberFormat('en-US', {
-									notation: "compact",
-									maximumFractionDigits: 2
-								}).format(ts.values.at(-1) || 0.0)} {ts.metadata.unit} on 
-								</Typography>
-							<Typography level="h3" component="span" sx={{wordBreak: "break-word"}} noWrap={false}>
-								{" "} {(new Date(ts.timestamps.at(-1) || new Date().getTime())).toLocaleString()}
-							</Typography>
-							</Typography>}
-							</Grid>
-
-							{/*Tags*/}
-							{ (!!tsTagsJSX.length) && <Grid padding={0.5} margin={0.5}>
-								<Grid
-							  	container={true}
-							  	direction="row"
-							  	spacing={1}
-							  	sx={(theme) => {return {
-							  		border: 1, borderColor: "#ff9d25",
-							  		// @ts-ignore
-										bgcolor: theme.colorSchemes[mode].tagBackgroundColor,
-									}}}
-							  	borderRadius={7}
-							  >
-									{tsTagsJSX}
-								</Grid>
-							</Grid>}
-
-							{/*Description*/}
-							{(ts.metadata.description && (ts.metadata.description.length > 0)) &&
-							<Grid padding={0.5} margin={0.5} sx={(_theme) => {return {
-							  		border: 1, borderColor: "#ff9d25",
-							  		maxHeight: '7em', overflowY: 'scroll'
-									}}}
-							  	borderRadius={7}>
-									<Typography level="h4" noWrap={false} component="span" sx={{wordBreak: "break-word"}}>
-									Description:
-									</Typography>
-									<Typography level="body-md" noWrap={false} component="span" sx={{wordBreak: "break-word"}}>
-									{ts.metadata.description}
-									</Typography>
-							</Grid>}
-						</Grid>
-					</Grid>
+					{beforeChartJSX}
 
 					{/*Chart*/}
 					<Grid>
 					{smallScreen?
 					<ChartJSChart
+						entry={entry}
 						width="100%"
 		      	height="250vh"
-						ts={ts}
 					/>:
 					<GoogleTSChart
-						ts={ts}
+						entry={entry}
 					  width="100%"
 		      	height="32em"
 		      	onChartReady={() => {setIsChartReady(true)}}
 					/>}
 					{!smallScreen && !isChartReady && <Loading message="Building Chart" circularProgress={!smallScreen} border={0}/>}
 					</Grid>
-					{getCitationJSX(ts)}
+					{getCitationJSX(entry)}
 				</Grid>
 
 				{/*Inside and below metrics*/}

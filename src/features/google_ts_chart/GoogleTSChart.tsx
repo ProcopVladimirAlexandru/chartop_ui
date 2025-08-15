@@ -6,28 +6,92 @@ import { useColorScheme } from '@mui/joy/styles';
 import Loading from '../loading/Loading';
 import { useWindowDimensions } from '../../utils/utils'
 
-import { SingleTimeseries } from '../../types/timeseries';
+import { ChartopEntry, SingleTimeseries } from '../../types/timeseries';
 import { GoogleChartData } from '../../types/ui';
 
 
-function getChartDataFromServerData(serverData: SingleTimeseries) {
-	const chartData: GoogleChartData = [["Timestamp", serverData.metadata.unit || "Value"]];
-	for (let i = 0; i < serverData.timestamps.length; ++i) {
-		chartData.push([new Date(serverData.timestamps[i]), serverData.values[i]]);
+function getChartDataFromServerData(entry: ChartopEntry) {
+	const header: Array<String> = ["Timestamp"];
+	for (let operand of entry.operands) {
+		header.push(operand.metadata.unit || "Value");
+	}
+	const chartData: GoogleChartData = [header];
+	if (entry.operands.length == 1) {
+		for (let i = 0; i < entry.operands[0].timestamps.length; ++i) {
+			chartData.push([new Date(entry.operands[0].timestamps[i]), entry.operands[0].values[i]]);
+		}
+		return chartData;
+	}
+
+	let i: number = 0;
+	let j: number = 0;
+	while (true) {
+		let iTs: number | null = null;
+		if (i < entry.operands[0].timestamps.length) {
+			iTs = entry.operands[0].timestamps[i];
+		}
+
+		let jTs: number | null = null;
+		if (j < entry.operands[1].timestamps.length) {
+			jTs = entry.operands[1].timestamps[j];
+		}
+
+		if (iTs === null && jTs === null) {
+		  break;
+		}
+
+		if (iTs !== null) {
+			if (jTs === null) {
+				chartData.push([new Date(iTs), entry.operands[0].values[i], null]);
+				++i;
+				continue;
+			}
+			else {
+				if (iTs === jTs) {
+					chartData.push([new Date(iTs), entry.operands[0].values[i], entry.operands[1].values[j]]);
+					++i;
+					++j;
+					continue;
+				}
+				else if (iTs < jTs) {
+					chartData.push([new Date(iTs), entry.operands[0].values[i], null]);
+					++i;
+					continue;
+				}
+				else {
+					chartData.push([new Date(jTs), null, entry.operands[1].values[j]]);
+					++j;
+					continue;
+				}
+			}
+		}
+		else {
+			chartData.push([new Date(jTs), null, entry.operands[1].values[j]]);
+			++j;
+			continue;
+		}
 	}
 	return chartData;
 }
 
-function GoogleTSChart({ts, width, height, onChartReady}: {
-		ts: SingleTimeseries;
+function GoogleTSChart({entry, width, height, onChartReady}: {
+		entry: ChartopEntry;
 		width: string | number;
 		height: string | number;
 		onChartReady: Function;
 
 	}) {
 	useEffect(() => {
-		if (((ts.timestamps.length || 0) <= 1) && onChartReady) {onChartReady()}
-	}, [ts]);
+		if (!onChartReady) {
+			return;
+		}
+		for (let operand of entry.operands) {
+			if (operand.timestamps.length > 1) {
+				return;
+			}
+		}
+		onChartReady();
+	}, [entry]);
 
 	const windowDimensions = useWindowDimensions();
 	const windowWidth = windowDimensions.width;
@@ -38,13 +102,17 @@ function GoogleTSChart({ts, width, height, onChartReady}: {
 	var style = getComputedStyle(document.body)
 	const smallScreen: boolean = ((windowWidth < 640) || (windowHeight < 640));
 
-	const chartData: GoogleChartData = getChartDataFromServerData(ts);
+	const chartData: GoogleChartData = getChartDataFromServerData(entry);
 	if ((chartData.length || 0) <= 1) {
 		return (<Loading message="Sorry, data is missing." circularProgress={false} border={0}/>);
 	}
 
+	const colors: Array<string> = ["#0866be"];
+	if (entry.operands.length > 1) {
+		colors.push("#ff3333");
+	}
 	const googleChartOptions = {
-		colors: ["#0866be"],
+		colors: colors,
 		title: smallScreen?undefined:"Select area to zoom in. Right click to zoom out.",
 		titlePosition: "in",
 		titleTextStyle: {
@@ -75,7 +143,7 @@ function GoogleTSChart({ts, width, height, onChartReady}: {
 			},
 		},
     vAxis: {
-    	title: ts.metadata.unit,
+    	title: entry.operands.map(op => op.metadata.unit).join(" and\n"),
     	titleTextStyle: {
 	      fontSize: 17,
 	      color: theme.colorSchemes[mode].chart.vAxis.title
@@ -109,7 +177,7 @@ function GoogleTSChart({ts, width, height, onChartReady}: {
 
 	return (
 		<Chart
-			graphID={ts.metadata.uid.toString()}
+			graphID={entry.operands.map(op => op.metadata.uid.toString()).join(",")}
 		  chartType="LineChart"
 		  options={googleChartOptions}
 		  data={chartData}
