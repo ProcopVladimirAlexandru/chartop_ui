@@ -1,6 +1,6 @@
 export interface Metric {
-	uid: number;
-	name: string;
+  uid: number;
+  name: string;
   description: string;
   category: string;
   unit: string;

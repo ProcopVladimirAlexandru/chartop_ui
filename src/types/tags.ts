@@ -1,6 +1,6 @@
 export interface Tag {
-	uid: number;
-	name: string;
+  uid: number;
+  name: string;
   description?: string;
   category: string;
   source_uid: string;

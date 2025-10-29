@@ -11,6 +11,8 @@
     "build-staging": "tsc && vite build --mode staging",
     "build-production": "tsc && vite build --mode production",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint-fix": "eslint . --fix --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "prettier-fix": "prettier -w .",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -25,15 +27,18 @@
     "chart.js": "^4.4.5",
     "chartjs-adapter-date-fns": "^3.0.0",
     "chartjs-plugin-zoom": "^2.0.1",
+    "d3": "^7.9.0",
     "dotenv": "^16.4.1",
     "lodash": "^4.17.21",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.2.0",
     "react-google-charts": "^5.1.0",
-    "react-redux": "^9.1.1"
+    "react-redux": "^9.1.1",
+    "react-router": "^7.8.2"
   },
   "devDependencies": {
+    "@types/d3": "^7.4.3",
     "@types/lodash": "^4.17.4",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
@@ -44,6 +49,7 @@
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "prettier": "^3.6.2",
     "typescript": "^5.2.2",
     "vite": "^5.0.8"
   }
